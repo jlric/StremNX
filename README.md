@@ -1,14 +1,14 @@
 # StremNX for Nintendo Switch 2
 
 An unofficial Stremio homebrew client for Nintendo Switch 2. It runs through
-OunceHEN and uses libounce.
+kaiHEN and uses libounce.
 
 This Switch 2 port is based on [StremNX by denpingus](https://github.com/denpingus/StremNX)
 at commit `151ac135c6a35499a37fb6b535fbd7be7f99a7ff`. The icon and logo
 are unchanged from upstream. The port was modified in November 2026. For
 Switch 1, use the upstream project.
 
-The Switch 2 homebrew SDK is currently part of the OunceHEN private beta.
+The Switch 2 homebrew SDK is currently part of the kaiHEN private beta.
 This repository contains app source and assets. It does not include the SDK,
 graphics driver, or launcher. Building and running the port requires beta access.
 
@@ -42,14 +42,14 @@ graphics driver, or launcher. Building and running the port requires beta access
 
 ## Requirements
 
-- A Nintendo Switch 2 running OunceHEN and its homebrew menu.
+- A Nintendo Switch 2 running kaiHEN and its homebrew menu.
 - An internet connection. A Stremio account is optional.
 
 ## Installing
 
 1. Build `stremnx.nro` with the beta Switch 2 homebrew SDK as described below.
 2. Copy it to `sdmc:/switch/stremnx.nro` on your SD card.
-3. Open it from the OunceHEN homebrew menu.
+3. Open it from the kaiHEN homebrew menu.
 
 Without logging in, only the official Cinemeta catalog is available. Log in under **Settings** to use the addons
 installed on your Stremio account, or add an addon by its manifest URL.
