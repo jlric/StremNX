@@ -17,6 +17,7 @@
 
 #include "app.hpp"
 #include "http.hpp"
+#include "http_stream.hpp"
 #include "log.hpp"
 
 namespace {
@@ -260,14 +261,6 @@ public:
         shape(p, c);
     }
 
-    void gradientV(float y, float h, Color c, Uint8 a0, Uint8 a1, int steps = 18) {
-        float sh = h / steps;
-        for (int i = 0; i < steps; i++) {
-            float t = (i + 0.5f) / steps;
-            rect(0, y + i * sh, 1280, sh + 0.6f, c.alpha((Uint8)(a0 + (a1 - a0) * t)));
-        }
-    }
-
     // an: ASS numpad alignment of (x, y): 7 top-left, 4 middle-left, 5 center, 6 middle-right, 9 top-right...
     void text(float x, float y, int size, Color c, int an, const std::string& s, bool shadow = true) {
         char b[256];
@@ -402,6 +395,9 @@ PlayResult runPlayer(App& app, const std::string& url, const PlayContext& ctx, d
     }
     setOpt(mpv, "vo", "libmpv");
     setOpt(mpv, "hwdec", "auto");
+    // The homebrew audio output can drop the center channel of surround tracks.
+    // Downmix before handing samples to it so dialogue remains audible.
+    setOpt(mpv, "audio-channels", "stereo");
     setOpt(mpv, "cache", "yes");
     setOpt(mpv, "demuxer-max-bytes", "48MiB");
     setOpt(mpv, "demuxer-max-back-bytes", "8MiB");
@@ -454,6 +450,10 @@ PlayResult runPlayer(App& app, const std::string& url, const PlayContext& ctx, d
     }
     const bool isTorrent = url.compare(0, 10, "torrent://") == 0 && app.activeTorrent;
     if (isTorrent) mpv_stream_cb_add_ro(mpv, "torrent", &app.activeTorrent, torrentOpen);
+    const bool isHttp = url.compare(0, 7, "http://") == 0 || url.compare(0, 8, "https://") == 0;
+    if (isHttp && addHttpStream(mpv, url) < 0)
+        logMsg("mpv: failed to register HTTP stream callback");
+    const std::string playbackPath = isHttp ? "stremnxhttp://media" : mpvPath(url);
 
     mpv_opengl_init_params glInit{getProcAddress, nullptr};
     mpv_render_param params[] = {
@@ -470,7 +470,7 @@ PlayResult runPlayer(App& app, const std::string& url, const PlayContext& ctx, d
     }
 
     appletSetMediaPlaybackState(true);  // keep the console from sleeping during playback
-    command(mpv, "loadfile", mpvPath(url).c_str());
+    command(mpv, "loadfile", playbackPath.c_str());
 
     // Subtitles from addons (OpenSubtitles...): fetched and downloaded in the background, then added
     // to mpv once the file is loaded.
@@ -493,6 +493,7 @@ PlayResult runPlayer(App& app, const std::string& url, const PlayContext& ctx, d
     uint32_t lastInput = SDL_GetTicks(), lastDraw = 0;
     double pos = startAt, dur = 0, cacheAhead = 0;
     bool paused = false, buffering = false;
+    bool lastCacheStall = false;
     int64_t bufferPct = 0;
     std::string flash;  // "+10s", "Subtitles off"...
     bool flashRight = true;
@@ -791,7 +792,7 @@ PlayResult runPlayer(App& app, const std::string& url, const PlayContext& ctx, d
             reconnecting = false;
             std::string at = std::to_string((int)pos);
             setAsync(mpv, "start", at.c_str());
-            command(mpv, "loadfile", mpvPath(url).c_str());
+            command(mpv, "loadfile", playbackPath.c_str());
         }
 
         watchBeat(WatchMain, "player: state");
@@ -801,6 +802,12 @@ PlayResult runPlayer(App& app, const std::string& url, const PlayContext& ctx, d
         buffering = obs.pausedForCache || obs.seeking;
         bufferPct = obs.bufferPct;
         cacheAhead = obs.cacheTime - pos;
+        if (obs.pausedForCache != lastCacheStall) {
+            logMsg("player: cache stall %s at %.1fs (%.1fs ahead, %lld%%)",
+                   obs.pausedForCache ? "started" : "ended", pos, cacheAhead,
+                   static_cast<long long>(bufferPct));
+            lastCacheStall = obs.pausedForCache;
+        }
 
         // Up next: the card appears in the last 20 s and counts down from 10.
         if (upNextOn && !upCancelled && !upShown && started && dur > 60 && dur - pos <= 20 && !menuOpen) {
@@ -868,8 +875,8 @@ PlayResult runPlayer(App& app, const std::string& url, const PlayContext& ctx, d
                 a.text(958, 660, 18, col::white, 4, line);
             } else {
                 if (controls) {
-                    a.gradientV(0, 170, col::black, 190, 0);
-                    a.gradientV(440, 280, col::black, 0, 215);
+                    a.rect(0, 0, 1280, 122, col::black.alpha(155));
+                    a.rect(0, 572, 1280, 148, col::black.alpha(180));
                     a.poly({60, 50, 72, 40, 72, 60}, col::white);  // back arrow
                     a.text(86, 50, 30, col::white, 4, ctx.name);
                     if (!ctx.episodeLabel.empty()) a.text(86, 90, 21, col::dim, 4, ctx.episodeLabel);
@@ -883,8 +890,8 @@ PlayResult runPlayer(App& app, const std::string& url, const PlayContext& ctx, d
                     a.roundRect(bx, by, std::max(6.0f, bw * p), 6, 3, col::accent);
                     a.circle(bx + bw * p, by + 3, 9, col::white);
                     a.text(1220, by + 3, 22, col::white, 6, dur > 0 ? "-" + clock(dur - pos) : clock(pos));
-                    a.text(bx, by - 30, 18, col::dim, 1, clock(pos) + (dur > 0 ? "  /  " + clock(dur) : ""));
-                    if (speedIdx != 2) a.text(bx + 1060, by - 30, 18, col::accentLight, 3, optionLabel(0));
+                    a.text(bx, by - 16, 18, col::dim, 1, clock(pos) + (dur > 0 ? "  /  " + clock(dur) : ""));
+                    if (speedIdx != 2) a.text(bx + 1060, by - 16, 18, col::accentLight, 3, optionLabel(0));
 
                     // Buttons row
                     float ry = 668, x = 60;

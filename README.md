@@ -1,6 +1,16 @@
-# StremNX
+# StremNX for Nintendo Switch 2
 
-**An unofficial Stremio client for the Nintendo Switch (homebrew).**
+An unofficial Stremio homebrew client for Nintendo Switch 2. It runs through
+OunceHEN and uses libounce.
+
+This Switch 2 port is based on [StremNX by denpingus](https://github.com/denpingus/StremNX)
+at commit `151ac135c6a35499a37fb6b535fbd7be7f99a7ff`. The icon and logo
+are unchanged from upstream. The port was modified in November 2026. For
+Switch 1, use the upstream project.
+
+The Switch 2 homebrew SDK is currently part of the OunceHEN private beta.
+This repository contains app source and assets. It does not include the SDK,
+graphics driver, or launcher. Building and running the port requires beta access.
 
 <p align="center"><img src="icon.jpg" width="160" alt="StremNX icon"></p>
 
@@ -8,8 +18,6 @@
 > StremNX is an independent, community project. It is **not affiliated with, endorsed by, or connected to Stremio**
 > or to Nintendo. "Stremio" is a trademark of its owner and is used here only to describe compatibility.
 > StremNX does not host, provide or link to any content: everything you see comes from the addons **you** install.
-
-🇧🇷 [Leia em português](README.pt-BR.md)
 
 ---
 
@@ -34,16 +42,14 @@
 
 ## Requirements
 
-- A Nintendo Switch able to run homebrew (e.g. Atmosphère)
-- **Launch the Homebrew Menu in title mode** (hold **R** while starting a game), not from the Album.
-  Applet mode does not have enough memory for video playback.
+- A Nintendo Switch 2 running OunceHEN and its homebrew menu.
 - An internet connection. A Stremio account is optional.
 
 ## Installing
 
-1. Download `stremnx.nro` from the [Releases](../../releases) page.
-2. Copy it to `sdmc:/switch/stremnx/stremnx.nro` on your SD card.
-3. Open it from the Homebrew Menu (title mode).
+1. Build `stremnx.nro` with the beta Switch 2 homebrew SDK as described below.
+2. Copy it to `sdmc:/switch/stremnx.nro` on your SD card.
+3. Open it from the OunceHEN homebrew menu.
 
 Without logging in, only the official Cinemeta catalog is available. Log in under **Settings** to use the addons
 installed on your Stremio account, or add an addon by its manifest URL.
@@ -94,18 +100,24 @@ StremNX ships with no torrent or piracy addons.
 
 ## Building
 
-1. Install [devkitPro](https://devkitpro.org/wiki/Getting_Started) with **Switch Development**.
-2. Install the libraries:
-   ```bash
+1. Install [devkitPro](https://devkitpro.org/wiki/Getting_Started) with Switch Development,
+   then install the beta Switch 2 homebrew SDK into the same `DEVKITPRO` tree
+   using the SDK's instructions.
+2. Install the required devkitPro portlibs if they are missing:
+   ```sh
    dkp-pacman -S switch-dev switch-sdl2 switch-sdl2_ttf switch-sdl2_image switch-curl switch-libmpv
    ```
-3. Build:
+   The beta SDK must provide `libounce/switch2_rules` and its graphics libraries.
+3. From this repository, build:
    ```bash
-   make
+   make -j2
    ```
    The result is `stremnx.nro`.
 
-For quick testing, start the Homebrew Menu's netloader (**Y**) and run `nxlink -s stremnx.nro` from the PC.
+Tested on Switch 2: UI, account login, addon browsing, and direct HTTP(S)
+playback. Rendering uses OpenGL. On the tested console, video decoding fell back
+to the CPU. Torrent playback/downloads and HLS/live streams have not been broadly
+tested. Compatibility with other SDK revisions is unverified.
 
 ## Project layout
 
@@ -123,7 +135,7 @@ For quick testing, start the Homebrew Menu's netloader (**Y**) and run `nxlink -
 
 ## License
 
-StremNX is free software released under the **GNU General Public License v3.0** — see [LICENSE](LICENSE).
+The original StremNX and this port are distributed under the **GNU General Public License v3.0** — see [LICENSE](LICENSE).
 It includes or links third-party software listed in [THIRD_PARTY.md](THIRD_PARTY.md).
 
 ## Disclaimer

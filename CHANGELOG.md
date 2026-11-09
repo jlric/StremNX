@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Exit back to hbmenu after all background threads have stopped.
+- Downmix surround audio to stereo so center-channel dialogue is audible.
+- Replace the player overlay gradient with translucent panels and lower the time label.
+
 ## 0.3.1 (2026-10-19)
 
 - Fix: subtitles from addons often did not show up. OpenSubtitles v3 (the official Stremio subtitles addon) is now

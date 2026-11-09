@@ -3,3 +3,8 @@ build/
 *.nacp
 *.elf
 *.map
+*.log
+config.json
+history.json
+library.json
+downloads/

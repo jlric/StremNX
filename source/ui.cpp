@@ -21,6 +21,8 @@ struct ImageLoader::Shared {
     std::condition_variable cv;
     std::deque<std::string> queue;
     std::deque<std::tuple<std::string, SDL_Surface*, bool>> done;
+    bool stopping = false;
+    int workers = 0;
 };
 
 static const size_t kMaxQueue = 64;
@@ -29,12 +31,17 @@ void ImageLoader::start(int threads) {
     sh = std::make_shared<Shared>();
     for (int i = 0; i < threads; i++) {
         std::shared_ptr<Shared> s = sh;
-        startThread([s]() {
+        {
+            std::lock_guard<std::mutex> lock(s->m);
+            ++s->workers;
+        }
+        if (!startThread([s]() {
             for (;;) {
                 std::string url;
                 {
                     std::unique_lock<std::mutex> lock(s->m);
-                    s->cv.wait(lock, [&] { return !s->queue.empty(); });
+                    s->cv.wait(lock, [&] { return s->stopping || !s->queue.empty(); });
+                    if (s->stopping) break;
                     url = s->queue.front();  // LIFO: newest (visible) request first
                     s->queue.pop_front();
                 }
@@ -48,12 +55,35 @@ void ImageLoader::start(int threads) {
                 std::lock_guard<std::mutex> lock(s->m);
                 s->done.emplace_back(url, surf, false);
             }
-        });
+            {
+                std::lock_guard<std::mutex> lock(s->m);
+                --s->workers;
+            }
+            s->cv.notify_all();
+        })) {
+            std::lock_guard<std::mutex> lock(s->m);
+            --s->workers;
+        }
     }
+}
+
+void ImageLoader::stop() {
+    if (!sh) return;
+    std::unique_lock<std::mutex> lock(sh->m);
+    sh->stopping = true;
+    sh->queue.clear();
+    sh->cv.notify_all();
+    sh->cv.wait(lock, [&] { return sh->workers == 0; });
+    for (auto& item : sh->done)
+        if (std::get<1>(item)) SDL_FreeSurface(std::get<1>(item));
+    sh->done.clear();
+    lock.unlock();
+    sh.reset();
 }
 
 void ImageLoader::request(const std::string& url) {
     std::lock_guard<std::mutex> lock(sh->m);
+    if (sh->stopping) return;
     sh->queue.push_front(url);
     while (sh->queue.size() > kMaxQueue) {
         sh->done.emplace_back(sh->queue.back(), nullptr, true);
@@ -80,8 +110,10 @@ bool Gfx::init(SDL_Window* w) {
     win = w;
     Result rc = plGetSharedFontByType(&fontData, PlSharedFontType_Standard);
     if (R_FAILED(rc)) {
-        logMsg("plGetSharedFontByType failed: 0x%x", rc);
-        return false;
+        logMsg("plGetSharedFontByType failed: 0x%x; using bundled font", rc);
+        if (!readFile("romfs:/fallback-font.ttf", fallbackFont)) return false;
+        fontData.address = (void*)fallbackFont.data();
+        fontData.size = fallbackFont.size();
     }
     logMsg("init: system font ok (%u bytes)", (unsigned)fontData.size);
     loader.start(4);
@@ -143,6 +175,7 @@ void Gfx::releaseRenderer() {
 }
 
 void Gfx::destroy() {
+    loader.stop();
     releaseRenderer();
     for (auto& kv : fonts) TTF_CloseFont(kv.second);
     fonts.clear();

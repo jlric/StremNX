@@ -134,9 +134,15 @@ void App::dumpSystemFont() {
 }
 
 void App::shutdown() {
+    logMsg("shutdown: stopping background work");
+    requestThreadStop();
+    if (activeTorrent) activeTorrent->stop();
+    for (auto& t : downloads) t->stop();
     stack.clear();
     toPush.clear();
     gfx.destroy();
+    waitForBackgroundThreads();
+    logMsg("shutdown: background work stopped");
     if (win) SDL_DestroyWindow(win);
     IMG_Quit();
     TTF_Quit();
@@ -415,7 +421,10 @@ void App::run() {
             double startAt = 0;
             const HistoryEntry* h = history.findVideo(ctx.videoId);
             if (playResume && h && h->position > 30 && !h->finished()) startAt = h->position;
-            logMsg("playing: %s (start %.0fs)", url.c_str(), startAt);
+            const size_t schemeEnd = url.find(':');
+            const std::string scheme = schemeEnd != std::string::npos && schemeEnd < 16
+                                           ? url.substr(0, schemeEnd) : "file";
+            logMsg("playing: %s (start %.0fs)", scheme.c_str(), startAt);
 
             watchBeat(WatchMain, "main: starting player");
             gfx.releaseRenderer();

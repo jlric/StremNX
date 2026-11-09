@@ -1,6 +1,7 @@
 // Home, Movies, Series and Search: a hero banner plus horizontal rows, streaming-service style.
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <functional>
 #include <set>
@@ -49,6 +50,8 @@ struct PageAction {
     MetaItem item;
     HistoryEntry entry;
 };
+
+std::string typeLabel(const std::string& type);
 
 std::function<CatalogResult()> catalogLoader(const Addon& a, const CatalogInfo& c, const std::string& extra,
                                               const std::set<std::string>& exclude = {}) {
@@ -121,7 +124,7 @@ public:
         int focusRow = std::max(0, focus - 1);
         for (size_t i = 0; i < rows.size(); i++) {
             Row& r = rows[i];
-            if (!r.started && r.loader && (int)i <= focusRow + 3) {
+            if (!r.started && r.loader && ((int)i <= focusRow + 3 || r.feedsHero)) {
                 r.started = true;
                 auto ld = r.loader;
                 r.task.start([ld]() { return ld(); });
@@ -275,11 +278,11 @@ private:
         int rw = drawRating(g, x, my, m.imdbRating);
         if (rw) x += rw + 18;
         if (!m.releaseInfo.empty()) x += g.text(m.releaseInfo, x, my, 20, col::text.alpha(a)) + 18;
-        std::string typeLabel = m.type == "series" ? "Series" : m.type == "movie" ? "Movie" : "";
-        if (!typeLabel.empty()) {
-            int tw = g.textWidth(typeLabel, 16) + 14;
+        std::string itemType = m.type == "movie" ? "Movie" : typeLabel(m.type);
+        if (!itemType.empty()) {
+            int tw = g.textWidth(itemType, 16) + 14;
             g.roundOutline(x, my + 1, tw, 24, 5, 1, col::dim.alpha(a));
-            g.text(typeLabel, x + 7, my + 3, 16, col::dim.alpha(a));
+            g.text(itemType, x + 7, my + 3, 16, col::dim.alpha(a));
             x += tw + 18;
         }
         g.text(joinGenres(m.genres, 3), x, my, 20, col::dim.alpha(a), W - x - 60);
@@ -287,7 +290,7 @@ private:
 
         bool heroFocus = focus == 0;
         int by = offY + 410;
-        std::string playLabel = m.type == "movie" ? "Play" : "Episodes";
+        std::string playLabel = m.type == "movie" ? "Play" : m.type == "series" ? "Episodes" : "Open";
         int w0 = buttonWidth(g, playLabel, IconPlay);
         drawButton(g, kMarginX, by, w0, 52, playLabel, heroFocus && heroBtn == 0, true, IconPlay);
         app.hit(kMarginX, by, w0, 52, 10, 0);
@@ -409,6 +412,18 @@ std::vector<CatalogPick> browsable(const std::vector<Addon>& addons, const std::
     return out;
 }
 
+std::vector<std::string> catalogTypes(const std::vector<Addon>& addons) {
+    std::vector<std::string> out;
+    std::set<std::string> seen;
+    const auto catalogs = listCatalogs(addons);
+    for (const char* preferred : {"movie", "series"})
+        for (const auto& c : catalogs)
+            if (c.type == preferred && seen.insert(c.type).second) out.push_back(c.type);
+    for (const auto& c : catalogs)
+        if (seen.insert(c.type).second) out.push_back(c.type);
+    return out;
+}
+
 CatalogPick genreCatalog(const std::vector<Addon>& addons, const std::string& type, const std::string& genre) {
     for (auto& c : listCatalogs(addons)) {
         if (c.type != type || c.genres.empty()) continue;
@@ -421,7 +436,13 @@ CatalogPick genreCatalog(const std::vector<Addon>& addons, const std::string& ty
 }
 
 std::string typeLabel(const std::string& type) {
-    return type == "series" ? "Series" : "Movies";
+    if (type == "movie") return "Movies";
+    if (type == "series") return "Series";
+    if (type == "tv") return "TV";
+    if (type.empty()) return "";
+    std::string label = type;
+    label[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(label[0])));
+    return label;
 }
 
 void addRecommendations(App& app, BrowsePage& p, const std::string& onlyType) {
@@ -480,12 +501,19 @@ const char* const kPreferredGenres[] = {"Action",   "Comedy",  "Drama",     "Thr
 class DiscoverPage {
 public:
     void reset(App& app) {
-        for (int t = 0; t < 2; t++) {
-            cats[t].clear();
-            for (auto& c : listCatalogs(app.addons)) {
-                if (c.type != (t == 0 ? "movie" : "series")) continue;
+        types.clear();
+        cats.clear();
+        const auto catalogs = listCatalogs(app.addons);
+        for (const auto& type : catalogTypes(app.addons)) {
+            std::vector<Cat> matching;
+            for (const auto& c : catalogs) {
+                if (c.type != type) continue;
                 if (c.required && c.genres.empty()) continue;  // needs something we can't offer
-                cats[t].push_back(Cat{app.addons[c.addon], c});
+                matching.push_back(Cat{app.addons[c.addon], c});
+            }
+            if (!matching.empty()) {
+                types.push_back(type);
+                cats.push_back(std::move(matching));
             }
         }
         typeIdx = catIdx = genreIdx = 0;
@@ -555,8 +583,8 @@ public:
     void draw(App& app) {
         Gfx& g = app.gfx;
         // Filter chips
-        const auto& list = cats[typeIdx];
-        std::string labels[3] = {std::string("Type: ") + (typeIdx == 0 ? "Movies" : "Series"),
+        const auto& list = cats.empty() ? emptyCats : cats[typeIdx];
+        std::string labels[3] = {std::string("Type: ") + (types.empty() ? "none" : typeLabel(types[typeIdx])),
                                  "Catalog: " + (list.empty() ? std::string("none") : catLabel(list[catIdx])),
                                  "Genre: " + (list.empty() ? std::string("-") : genreLabel())};
         int x = 60;
@@ -600,7 +628,9 @@ private:
         Addon addon;
         CatalogInfo info;
     };
-    std::vector<Cat> cats[2];
+    std::vector<std::string> types;
+    std::vector<std::vector<Cat>> cats;
+    std::vector<Cat> emptyCats;
     int typeIdx = 0, catIdx = 0, genreIdx = 0;
     int focus = 0, chip = 0, sel = 0;
     float scroll = 0;
@@ -615,7 +645,7 @@ private:
 
     std::vector<std::string> genreOptions() const {
         std::vector<std::string> o;
-        if (cats[typeIdx].empty()) return o;
+        if (cats.empty()) return o;
         const Cat& c = cats[typeIdx][catIdx];
         if (!c.info.required) o.push_back("All");
         o.insert(o.end(), c.info.genres.begin(), c.info.genres.end());
@@ -628,8 +658,10 @@ private:
     }
 
     void cycle(int dir) {
+        if (cats.empty()) return;
         if (chip == 0) {
-            typeIdx = 1 - typeIdx;
+            const int n = static_cast<int>(cats.size());
+            typeIdx = (typeIdx + dir + n) % n;
             catIdx = genreIdx = 0;
         } else if (chip == 1 && !cats[typeIdx].empty()) {
             int n = (int)cats[typeIdx].size();
@@ -652,7 +684,7 @@ private:
             err.clear();
             task.cancel();
         }
-        if (cats[typeIdx].empty()) return;
+        if (cats.empty()) return;
         const Cat& c = cats[typeIdx][catIdx];
         std::string extra;
         std::string genre = genreLabel();
@@ -699,7 +731,7 @@ public:
     HomeScreen() {
         search.hasHero = false;
         search.rowsTop = 170;
-        search.emptyText = "Press Y to search movies and series";
+        search.emptyText = "Press Y to search your addons";
     }
 
     void rebuildHome(App& app) {
@@ -740,18 +772,19 @@ public:
         addRecommendations(app, p, "");
 
         std::set<std::string> used;
-        for (const char* type : {"movie", "series"}) {
+        int heroSources = 0;
+        for (const auto& type : catalogTypes(app.addons)) {
             auto cats = browsable(app.addons, type);
             if (cats.empty()) continue;
             Row r;
             r.title = "Popular " + typeLabel(type);
-            r.feedsHero = true;
+            r.feedsHero = heroSources++ < 2;
             r.loader = catalogLoader(*cats[0].addon, cats[0].info, "");
             used.insert(cats[0].addon->id + "/" + type + "/" + cats[0].info.id);
             p.rows.push_back(std::move(r));
         }
         // Everything else the addons offer
-        for (const char* type : {"movie", "series"}) {
+        for (const auto& type : catalogTypes(app.addons)) {
             for (auto& c : browsable(app.addons, type)) {
                 std::string key = c.addon->id + "/" + type + "/" + c.info.id;
                 if (!used.insert(key).second) continue;
@@ -795,7 +828,7 @@ public:
         search.reset();
         search.emptyText = "Nothing found for \"" + q + "\"";
         std::string extra = "search=" + urlEncode(q);
-        for (const char* type : {"movie", "series"}) {
+        for (const auto& type : catalogTypes(app.addons)) {
             std::vector<std::pair<Addon, CatalogInfo>> sources;
             std::vector<std::string> extras;
             for (auto& c : listCatalogs(app.addons))
@@ -877,7 +910,7 @@ public:
         } else if (tab == TAB_SEARCH) {
             if (in.pressed(K_Y) || (in.pressed(K_A) && search.rows.empty()) || tid == 30) {
                 std::string q;
-                if (showKeyboard(q, "Search movies and series", query) && !q.empty()) startSearch(app, q);
+                if (showKeyboard(q, "Search your addons", query) && !q.empty()) startSearch(app, q);
                 return;
             }
             handle(app, search.update(app));
@@ -896,7 +929,7 @@ public:
         g.roundOutline(bx, 96, bw, 56, 28, 2, col::white.alpha(40));
         g.roundOutline(bx + 24, 112, 20, 20, 10, 3, col::dim);  // magnifier
         g.rect(bx + 41, 130, 8, 3, col::dim);
-        g.text(query.empty() ? "Search movies and series" : query, bx + 62, 110, 22, query.empty() ? col::faint : col::text,
+        g.text(query.empty() ? "Search your addons" : query, bx + 62, 110, 22, query.empty() ? col::faint : col::text,
                bw - 140);
         g.roundRect(bx + bw - 54, 110, 30, 28, 14, col::white.alpha(36));
         g.text("Y", bx + bw - 39, 113, 18, col::text, 0, AlignCenter);

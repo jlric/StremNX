@@ -95,8 +95,9 @@ void watchdogStart() {
     startThread(
         []() {
             bool reported[WatchSlots] = {};
-            for (;;) {
+            while (!threadStopRequested()) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                if (threadStopRequested()) break;
                 uint32_t now = SDL_GetTicks();
                 for (int s = 0; s < WatchSlots; s++) {
                     WatchState& w = g_watch[s];

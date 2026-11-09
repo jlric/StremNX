@@ -5,10 +5,15 @@
 #include <cctype>
 
 #include "log.hpp"
+#include "thread.hpp"
 
 static size_t writeCb(char* ptr, size_t size, size_t nmemb, void* ud) {
     static_cast<std::string*>(ud)->append(ptr, size * nmemb);
     return size * nmemb;
+}
+
+static int stopCb(void*, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
+    return threadStopRequested() ? 1 : 0;
 }
 
 void httpInit() {
@@ -22,6 +27,10 @@ void httpCleanup() {
 static bool perform(const std::string& url, const std::string* body, std::string& out,
                     std::string& err, long timeoutSec) {
     out.clear();
+    if (threadStopRequested()) {
+        err = "shutting down";
+        return false;
+    }
     CURL* c = curl_easy_init();
     if (!c) {
         err = "curl_easy_init failed";
@@ -38,6 +47,8 @@ static bool perform(const std::string& url, const std::string* body, std::string
     curl_easy_setopt(c, CURLOPT_ACCEPT_ENCODING, "");
     curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, writeCb);
     curl_easy_setopt(c, CURLOPT_WRITEDATA, &out);
+    curl_easy_setopt(c, CURLOPT_XFERINFOFUNCTION, stopCb);
+    curl_easy_setopt(c, CURLOPT_NOPROGRESS, 0L);
     if (body) {
         headers = curl_slist_append(headers, "Content-Type: application/json");
         curl_easy_setopt(c, CURLOPT_HTTPHEADER, headers);

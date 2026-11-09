@@ -254,7 +254,7 @@ struct Peer {
     }
     void setHave(int p) {
         size_t b = (size_t)p / 8;
-        if (bits.size() <= b) bits.resize(b + 1);
+        while (bits.size() <= b) bits.push_back(0);
         bits[b] |= (uint8_t)(0x80 >> (p % 8));
     }
     bool requested(int piece, int block) const {

@@ -1,11 +1,13 @@
 # Third-party software
 
-StremNX is built with the following libraries, installed from the devkitPro package repositories and linked
-statically into `stremnx.nro`. Each one is the work of its respective authors and is used under its own license.
+This Switch 2 port links libraries from devkitPro and the separate beta Switch 2
+homebrew SDK into `stremnx.nro`. Each library is the work of its respective
+authors and is used under its own license. The SDK and its graphics driver are
+not included in this source repository.
 
 | Library | Used for | License |
 |---|---|---|
-| [libnx](https://github.com/switchbrew/libnx) | Nintendo Switch system services | ISC |
+| libounce (beta Switch 2 homebrew SDK) | Nintendo Switch 2 system services | See the separately supplied SDK |
 | [mpv](https://mpv.io) (libmpv) | Video playback | GPL-2.0-or-later / LGPL-2.1-or-later (depends on the build) |
 | [FFmpeg](https://ffmpeg.org) | Audio/video decoding (used by mpv) | LGPL-2.1-or-later / GPL-2.0-or-later (depends on the build) |
 | [libass](https://github.com/libass/libass) | Subtitle rendering (used by mpv) | ISC |
@@ -26,7 +28,7 @@ repository.
 
 ## Not included
 
-- **Fonts**: the Nintendo Switch system font is read from the console at runtime and is not distributed.
+- **Fonts**: the Nintendo Switch system font is read from the console at runtime when available. The fallback Liberation Sans font in `romfs/` is distributed with its own license in [LIBERATION-FONT-LICENSE](LIBERATION-FONT-LICENSE).
 - **Content and addons**: StremNX ships with only the default Stremio catalog (Cinemeta) enabled. All other addons
   are installed by the user.
 - **Trademarks**: "Stremio" and "Nintendo Switch" are trademarks of their respective owners. StremNX is not

@@ -40,6 +40,7 @@ class ImageLoader {
 public:
     struct Shared;
     void start(int threads);
+    void stop();
     void request(const std::string& url);
     // Hands back a finished result. surf == nullptr with dropped == false means it failed.
     bool pop(std::string& url, SDL_Surface*& surf, bool& dropped);
@@ -94,6 +95,7 @@ public:
     PlFontData fontData{};
 
 private:
+    std::string fallbackFont;
     struct Cached {
         SDL_Texture* tex;
         int w, h;
